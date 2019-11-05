@@ -11,12 +11,13 @@
 %%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(memory_cell).
+-module(memcell).
 -behavior(gen_server).
 
--export([start/2]).
--export([handle_call/3]).
+-include("../prelude.hrl").
 
+-export([start/2, get/2, insert/2]).
+-export([init/1, handle_call/3, handle_cast/2]).
 
 %%------------------------------------------------------------------------------
 %% @doc Memory cell has to be larger than 0. It defines how many elements does
@@ -52,16 +53,17 @@
     size
 }).
 
-%% When a cell is initialized, is it filled with an instance of the provided
-%% default element. It adds massive overhead for cell instantiation, however it
-%% removes the need of checks for undefined elements.
-start(Capacity, Default) when Capacity > 0 ->
-    Elements = array:new(Capacity, [
-        {default, Default},
-        {fixed, true}
-    ]),
-    Acc = array:new(Capacity, fixed),
-    loop(Elements, 0, Acc).
+start(Capacity, Element) ->
+    gen_server:start(?MODULE, {Capacity, Element}, []).
+
+get(N, Pid) -> gen_server:call(Pid, {get, N}).
+
+insert(Element, Pid) -> gen_server:cast(Pid, {insert, Element}).
+
+%% Starts a new memory cell with given capacity and welcome element.
+init({Capacity, Element}) when Capacity > 0 ->
+    Memory = array:set(0, Element, array:new(Capacity, fixed)),
+    {ok, #memcell{cap=Capacity, size=1, mem=Memory}}.
 
 %% If the requested number of elements is larger or equal to the capacity, the
 %% memcell returns all elements in the memory. Since all messages are returned,
@@ -69,7 +71,8 @@ start(Capacity, Default) when Capacity > 0 ->
 %% be valid elements instead of default "undefined".
 handle_call({get, N}, _, State = #memcell{cap=Capacity, mem=Memory, init=true})
     when N >= State#memcell.cap ->
-    {reply, {Capacity, Memory}, State};
+    ?PRINT("HMMM"),
+    {reply, {Capacity, array:to_list(Memory)}, State};
 
 %% If the memcell is not yet fully initialized (some elements are still
 %% "undefined"), the random elements for the response are only selected from the
@@ -82,15 +85,24 @@ handle_call({get, N}, _, State = #memcell{size=Size, mem=Memory, init=false}) ->
 handle_call({get, N}, _, State = #memcell{cap=Capacity, mem=Memory, init=true}) ->
     {reply, {N, random_elements(Memory, Capacity, N)}, State}.
 
-%% If the memcell is at the verge of its capacity, it resets its size pointer
-%% back to 0 and starts writing new elements to the beginning of the array.
-handle_cast(
-    {insert, Element},
-    State = #memcell{cap=Capacity, size=Capacity, mem=Memory}
-) ->
+%% Special case for memcell with capacity 1.
+handle_cast({insert, Element}, State = #memcell{cap=1, mem=Memory}) ->
     NewState = State#memcell{
         init=true,
-        mem=array:set(0, Element, Memory),
+        mem=array:set(0, Element, Memory)
+    },
+    {noreply, NewState};
+
+%% If the memcell is at the verge of its capacity, it resets its size pointer
+%% back to 0 and starts writing new elements to the beginning of the array.
+%% The element it has received with this call will be positioned last.
+handle_cast(
+    {insert, Element},
+    State = #memcell{cap=Capacity, size=Size, mem=Memory}
+) when Size == Capacity - 1 ->
+    NewState = State#memcell{
+        init=true,
+        mem=array:set(Size, Element, Memory),
         size=0
     },
     {noreply, NewState};
@@ -104,39 +116,21 @@ handle_cast({insert, Element}, State = #memcell{mem=Memory, size=Size}) ->
     },
     {noreply, NewState}.
 
-loop(Memory, AccSize, Acc) ->
-    Capacity = array:size(Memory),
-    receive
-        %% If we have less elements in memory than the user requested elements,
-        %% then we return all elements.
-        {get, N, From} when N >= Capacity ->
-            From ! {Capacity, Memory};
-        %% We pick a random element and add it to the return list. This is
-        %% repeated N times.
-        {get, N, From} ->
-            From ! random_elements(Memory, Capacity, N);
-        %% If the accumulator reached the capacity, it is promoted to be the new
-        %% memory and a new accumulator is created with the one received element.
-        {insert, Element} when AccSize == Capacity ->
-            NewAcc = array:new(Capacity, fixed),
-            NewAccSize = 1,
-            loop(Acc, NewAccSize, array:set(0, Element, NewAcc));
-        %% Inserts new element to the memory pool,
-        {insert, Element} ->
-            loop(Memory, AccSize + 1, array:set(AccSize, Element, Acc))
-    end,
-    loop(Memory, AccSize, Acc).
-
 %% Picks N elements from Source array at random.
 random_elements(Source, Size, N) -> random_elements(Source, Size, N, []).
 
 %% We the list is of expected size, return it.
 random_elements(_Source, _Size, 0, List) -> List;
 
+%% If we only have one process, we copy it N types.
+random_elements(Source, 1, N, List) ->
+    Head = array:get(0, Source),
+    random_elements(Source, 1, N - 1, [ Head | List]);
+
 %% Get next random element, insert it into the list and call itself.
 random_elements(Source, Size, N, List) ->
     %% Get a random integer in interval <0; Size - 1>. We will use this
     %% integer to access a random element.
-    Index = rand:uniform(Size - 1),
+    Index = rand:uniform(Size) - 1,
     Element = array:get(Index, Source),
     random_elements(Source, Size, N - 1, [Element | List]).
