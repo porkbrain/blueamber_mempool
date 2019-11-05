@@ -1,12 +1,10 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc To store elements, mempool runs memory cell processes. Their main
 %%% purpose is to separate concern between agents which check that the incoming
-%%% requests are valid. A memory cell accepts two types of messages:
-%%% - get ("read") messages retrieve one or more elements from the memory cell
+%%% requests are valid. A memory cell accepts two types of elements:
+%%% - get ("read") elements retrieve one or more elements from the memory cell
 %%%     at random
-%%% - insert ("write") messages to the accumulator that, once it reaches the
-%%%     capacity of the cell in size, is used as the memory and an empty
-%%%     accumulator is created
+%%% - insert ("write") elements to the memory cell
 %%%
 %%% @author Michael Bausano
 %%% @end
@@ -34,18 +32,40 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--type element() :: any().
+-type element() :: term().
 
 %%------------------------------------------------------------------------------
-%% @doc Initializes new memory cell which given capacity.
-%%
-%% @param capacity() Max elements in memory
-%% @param element() Default element whch will be used to fill the initial memory
+%% @doc Number of messages to be retrieve or that has been retrieved.
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start(capacity(), element()) -> any().
+-type number_of_elements() :: integer().
 
+%%------------------------------------------------------------------------------
+%% @doc Represents a memory cell's state.
+%% cap
+%% - immutable integer which defines, throughout the whole life time of a cell
+%%      how many elements can it hold at once
+%% - a new memory cell will contain an array with cap elements, out of which all
+%%      but the first one wil default element are undefined
+%% mem
+%% - an array of `cap` size, which is on initialization filled with undefined
+%%      on all its indicies but the first
+%% size
+%% - an integer pointing to next message that will be overriden when an insert
+%%       request hits the mailbox
+%% - it increments from 0 to `cap` and once it reaches `cap`, it goes back to 0
+%% - when `init` is "false", random message selection picks from the `mem` only
+%%      elements which have lower index than `size`, as above size are undefined
+%%      (invalid) elements
+%% init
+%% - defaults to "false" when a new memory cell is created
+%% - boolean flag which indicates whether a cell can gone full circle at least
+%%      once, meaning that even the last element holds a valid message
+%% - main purpose it to help pattern match more effective implementations
+%%
+%% @end
+%%------------------------------------------------------------------------------
 -record(memcell, {
     cap,
     init=false,
@@ -53,12 +73,49 @@
     size
 }).
 
+%%%
+%%% Exported functions
+%%%
+
+%%------------------------------------------------------------------------------
+%% @doc Initializes new memory cell which given capacity. The provided element
+%% is put into the first index of the initial memory. This guarantees that a
+%% memory cell is never empty
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec start(capacity(), element()) -> {'ok', pid()} | {'error', any()}.
+
 start(Capacity, Element) ->
     gen_server:start(?MODULE, {Capacity, Element}, []).
 
+%%------------------------------------------------------------------------------
+%% @doc Retrieves list of random elements. Since the requested amount of
+%% can be greater than in memory elements (or even capacity) and the elements
+%% are picked at random, it is possible that some elements are going to be
+%% duplicates.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+
+-spec get(number_of_elements(), pid()) -> {number_of_elements(), [element()]}.
+
 get(N, Pid) -> gen_server:call(Pid, {get, N}).
 
+%%------------------------------------------------------------------------------
+%% @doc Inserts new element into the memory. Since the memory cell only has a
+%% limited capacity, it will override some previous message that was contained
+%% in the cell.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec insert(element(), pid()) -> ok.
+
 insert(Element, Pid) -> gen_server:cast(Pid, {insert, Element}).
+
+%%%
+%%% Callback functions from gen_server
+%%%
 
 %% Starts a new memory cell with given capacity and welcome element.
 init({Capacity, Element}) when Capacity > 0 ->
@@ -115,6 +172,10 @@ handle_cast({insert, Element}, State = #memcell{mem=Memory, size=Size}) ->
         size=Size + 1
     },
     {noreply, NewState}.
+
+%%%
+%%% Local functions
+%%%
 
 %% Picks N elements from Source array at random.
 random_elements(Source, Size, N) -> random_elements(Source, Size, N, []).
