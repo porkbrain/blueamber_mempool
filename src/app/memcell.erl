@@ -14,7 +14,8 @@
 
 -include("../prelude.hrl").
 
--export([start/2, get/2, insert/2]).
+-export([start/1, start/2, start_link/1, start_link/2]).
+-export([get/2, insert/2]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
 %%------------------------------------------------------------------------------
@@ -84,10 +85,25 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start(capacity(), element()) -> {'ok', pid()} | {'error', any()}.
+-spec start(capacity()) -> {'ok', pid()} | {'error', any()}.
 
-start(Capacity, Element) ->
-    gen_server:start(?MODULE, {Capacity, Element}, []).
+start(Capacity) ->
+    gen_server:start(?MODULE, {Capacity, []}, []).
+
+-spec start(capacity(), [element()]) -> {'ok', pid()} | {'error', any()}.
+
+start(Capacity, Elements) ->
+    gen_server:start(?MODULE, {Capacity, Elements}, []).
+
+-spec start_link(capacity()) -> {'ok', pid()} | {'error', any()}.
+
+start_link(Capacity) ->
+    gen_server:start_link(?MODULE, {Capacity, []}, []).
+
+-spec start_link(capacity(), [element()]) -> {'ok', pid()} | {'error', any()}.
+
+start_link(Capacity, Elements) ->
+    gen_server:start_link(?MODULE, {Capacity, Elements}, []).
 
 %%------------------------------------------------------------------------------
 %% @doc Retrieves list of random elements. Since the requested amount of
@@ -118,9 +134,9 @@ insert(Element, Pid) -> gen_server:cast(Pid, {insert, Element}).
 %%%
 
 %% Starts a new memory cell with given capacity and welcome element.
-init({Capacity, Element}) when Capacity > 0 ->
-    Memory = array:set(0, Element, array:new(Capacity, fixed)),
-    {ok, #memcell{cap=Capacity, size=1, mem=Memory}}.
+init({Capacity, Elements}) when Capacity > 0 ->
+    Memory = array:from_list(Elements),
+    {ok, #memcell{cap=Capacity, size=array:size(Memory), mem=Memory}}.
 
 %% If the requested number of elements is larger or equal to the capacity, the
 %% memcell returns all elements in the memory. Since all messages are returned,
@@ -128,8 +144,11 @@ init({Capacity, Element}) when Capacity > 0 ->
 %% be valid elements instead of default "undefined".
 handle_call({get, N}, _, State = #memcell{cap=Capacity, mem=Memory, init=true})
     when N >= State#memcell.cap ->
-    ?PRINT("HMMM"),
     {reply, {Capacity, array:to_list(Memory)}, State};
+
+%% If there are no elements in the cell, return 0 messages.
+handle_call({get, _}, _, State = #memcell{size=0, init=false}) ->
+    {reply, {0, []}, State};
 
 %% If the memcell is not yet fully initialized (some elements are still
 %% "undefined"), the random elements for the response are only selected from the
@@ -186,7 +205,7 @@ random_elements(_Source, _Size, 0, List) -> List;
 %% If we only have one process, we copy it N types.
 random_elements(Source, 1, N, List) ->
     Head = array:get(0, Source),
-    random_elements(Source, 1, N - 1, [ Head | List]);
+    random_elements(Source, 1, N - 1, [Head | List]);
 
 %% Get next random element, insert it into the list and call itself.
 random_elements(Source, Size, N, List) ->
