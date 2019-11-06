@@ -26,7 +26,7 @@ start_link() ->
     supervisor:start_link(memcell_sup, []).
 
 %%%
-%%% Callback functions from gen_server
+%%% Callback functions from supervisor
 %%%
 
 %% Boots a supervisor with default cell capacity.
