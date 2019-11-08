@@ -19,30 +19,6 @@
 -export([init/1, handle_call/3, handle_cast/2]).
 
 %%------------------------------------------------------------------------------
-%% @doc Memory cell has to be larger than 0. It defines how many elements does
-%%      the cell store. The capacity also effects accumulator which when hitting
-%%      the capacity, discards old messages and uses new ones.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--type capacity() :: integer().
-
-%%------------------------------------------------------------------------------
-%% @doc The type of element that this cell stores. All elements in the
-%%      accumulator and in the memory should be of the same type.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--type element() :: term().
-
-%%------------------------------------------------------------------------------
-%% @doc Number of messages to be retrieve or that has been retrieved.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--type number_of_elements() :: integer().
-
-%%------------------------------------------------------------------------------
 %% @doc Represents a memory cell's state.
 %% cap
 %% - immutable integer which defines, throughout the whole life time of a cell
@@ -68,10 +44,11 @@
 %% @end
 %%------------------------------------------------------------------------------
 -record(memcell, {
-    cap,
-    init=false,
-    mem,
-    size
+    cap :: capacity(),
+    %% TODO: Replace `init` with `array:sparse_size`.
+    init=false :: boolean(),
+    mem :: array(),
+    size :: integer()
 }).
 
 %%%
