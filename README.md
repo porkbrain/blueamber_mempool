@@ -1,8 +1,6 @@
-# erlang-skelet
-Simple Erlang skeleton. Clone `master` branch for last stable version.
-Fork `develop` branch for pull requests.
+# Mempool
 
-> Version: 1.0.0
+> Version: 0.1.0
 
 > Contact: bausanomichal@gmail.com
 
