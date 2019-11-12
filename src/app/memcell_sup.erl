@@ -10,7 +10,7 @@
 
 -include("../prelude.hrl").
 
--export([start_link/0, child_spec/2, which_children/1]).
+-export([start_link/1, child_spec/1, which_children/1]).
 -export([init/1]).
 
 %%%
@@ -22,24 +22,24 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
-% -type startlink_err() :: {already_started, pid()} | {shutdown, term()} | term().
 
--spec start_link() -> {ok, pid()} | ignore | {error, supervisor:startlink_err()}.
+-spec start_link(capacity()) -> {ok, pid()} | ignore | {error, supervisor:startlink_err()}.
 
-start_link() ->
-    supervisor:start_link(memcell_sup, []).
+start_link(Capacity) ->
+    supervisor:start_link(?MODULE, [Capacity]).
 
 %%------------------------------------------------------------------------------
-%% @doc Exports child spec for a new child with given id.
+%% @doc Exports child spec for supervisor.
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec child_spec(term(), integer()) -> supervisor:child_spec().
+-spec child_spec(integer()) -> supervisor:child_spec().
 
-child_spec(Id, Capacity) when Capacity > 0 -> #{
-    id => Id,
+child_spec(Capacity) when Capacity > 0 -> #{
+    id => cell,
     start => {memcell, start_link, [Capacity]},
-    shutdown => brutal_kill
+    shutdown => brutal_kill,
+    type => worker
 }.
 
 %%------------------------------------------------------------------------------
@@ -57,7 +57,7 @@ which_children(Supervisor) ->
 %%% Callback functions from supervisor
 %%%
 
-init({Capacity})->
+init(Capacity)->
     SupFlags = #{strategy => simple_one_for_one},
-    ChildSpecs = [child_spec(0, Capacity)],
+    ChildSpecs = [child_spec(Capacity)],
     {ok, {SupFlags, ChildSpecs}}.

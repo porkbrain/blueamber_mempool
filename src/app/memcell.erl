@@ -110,8 +110,14 @@ insert(Element, Pid) -> gen_server:cast(Pid, {insert, Element}).
 %%% Callback functions from gen_server
 %%%
 
+init({Capacity}) when Capacity > 0 ->
+    Memory = array:new(),
+    {ok, #memcell{cap=Capacity, size=0, mem=Memory}};
+
 %% Starts a new memory cell with given capacity and welcome element.
 init({Capacity, Elements}) when Capacity > 0 ->
+    ?PRINT(Capacity),
+    ?PRINT(Elements),
     Memory = array:from_list(Elements),
     {ok, #memcell{cap=Capacity, size=array:size(Memory), mem=Memory}}.
 
