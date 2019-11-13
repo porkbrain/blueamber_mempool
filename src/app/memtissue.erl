@@ -21,7 +21,6 @@
 %%% Each mempool should have a reasonable env var which limits the number of
 %%% messages a client can query in one request.
 %%%
-%%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memtissue).

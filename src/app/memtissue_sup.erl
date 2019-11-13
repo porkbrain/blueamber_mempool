@@ -2,7 +2,6 @@
 %%% @doc Supervises memtissue with `simple_one_for_one` strategy. There usually
 %%% will only be one process this supervisor has to take care of.
 %%%
-%%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memtissue_sup).

@@ -6,7 +6,6 @@
 %%%     at random
 %%% - insert ("write") elements to the memory cell
 %%%
-%%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memcell).
