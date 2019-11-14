@@ -19,7 +19,7 @@ has_four_children_test() ->
     {ok, Child4} = supervisor:start_child(Pid, []),
     Children = memcell_sup:which_children(Pid),
     ?assertEqual(4, length(Children)),
-    [Child1 | [Child2 | [Child3 | [Child4]]]],
+    ?assertEqual([Child1 | [Child2 | [Child3 | [Child4]]]], Children),
     true = is_process_alive(Child1),
     true = is_process_alive(Child2),
     true = is_process_alive(Child3),

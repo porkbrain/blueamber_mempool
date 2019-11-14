@@ -2,7 +2,6 @@
 %%% @doc Supervises memcells with `simple_one_for_one` strategy. New memcells
 %%% are spawned empty with default capacity which can be configured in prelude.
 %%%
-%%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memcell_sup).

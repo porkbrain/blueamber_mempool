@@ -6,7 +6,6 @@
 %%%     at random
 %%% - insert ("write") elements to the memory cell
 %%%
-%%% @author Michael Bausano
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memcell).
@@ -116,8 +115,6 @@ init({Capacity}) when Capacity > 0 ->
 
 %% Starts a new memory cell with given capacity and welcome element.
 init({Capacity, Elements}) when Capacity > 0 ->
-    ?PRINT(Capacity),
-    ?PRINT(Elements),
     Memory = array:from_list(Elements),
     {ok, #memcell{cap=Capacity, size=array:size(Memory), mem=Memory}}.
 
