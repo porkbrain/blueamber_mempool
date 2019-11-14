@@ -21,15 +21,21 @@
 %%% Each mempool should have a reasonable env var which limits the number of
 %%% messages a client can query in one request.
 %%%
+%%% For this module, we picked behaviour of `gen_server`. Gen server provides
+%%% useful functionality for handling async requests. Insert requests might
+%%% scale the memtissue, which is unnecessary to wait for from client side of
+%%% view.
+%%%
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(memtissue).
--behavior(gen_event).
+-behavior(gen_server).
 
 -include("../prelude.hrl").
 
--export([insert/1, get/1, flush/0, start_link/0]).
--export([init/1, handle_call/2, handle_event/2]).
+-export([insert/1, get/1, start_link/1, count_cells/0]).
+-export([flush/0]).
+-export([init/1, handle_call/3, handle_cast/2]).
 
 %%------------------------------------------------------------------------------
 %% @doc Holds state for this gen server implementation.
@@ -40,7 +46,9 @@
     supervisor :: pid(),
     memcells :: array(),
     %% How many inserts until next cell.
-    until_next_cell=?MEMCELL_CAPACITY :: integer()
+    until_next_cell :: integer(),
+    %% How many elements does a single cell store at most.
+    memcell_capacity :: integer()
 }).
 
 %%%
@@ -48,15 +56,18 @@
 %%%
 
 %%------------------------------------------------------------------------------
-%% @doc Initializes new memory tissue which given capacity.
+%% @doc Initializes new memory tissue with given capacity.
 %%
 %% @end
 %%------------------------------------------------------------------------------
 
--spec start_link() -> {'ok', pid()} | {'error', any()}.
+-spec start_link(capacity()) -> ok.
 
-start_link() ->
-    gen_server:start_link(?MODULE, {}, []).
+start_link(Capacity) ->
+    %% TODO: Save statistics/trace/log to file based on environment.
+    %% See http://erlang.org/doc/man/gen_server.html#start_link-2 for more
+    %% information on how this can be achieved with debug options.
+    {ok, _} = gen_server:start_link({local, memtissue}, ?MODULE, Capacity, []).
 
 %%------------------------------------------------------------------------------
 %% @doc Inserts a new element to one of the memcells. Every now and then this
@@ -67,7 +78,7 @@ start_link() ->
 
 -spec insert(element()) -> ok | {error, term()}.
 
-insert(Element) -> gen_event:call(memtissue, ?MODULE, {insert, Element}).
+insert(Element) -> gen_server:cast(memtissue, {insert, Element}).
 
 %%------------------------------------------------------------------------------
 %% @doc Returns a callback function which can be used as callback to get N
@@ -86,7 +97,19 @@ insert(Element) -> gen_event:call(memtissue, ?MODULE, {insert, Element}).
 
 -spec get(number_of_elements()) -> {ok, fun(() -> [element()])}.
 
-get(N) -> gen_event:call(memtissue, ?MODULE, {get, N}).
+get(N) -> gen_server:call(memtissue, {get, N}).
+
+
+%%------------------------------------------------------------------------------
+%% @doc Counts how many memcells are there currently running (or being
+%% restarted).
+%%
+%% @end
+%%------------------------------------------------------------------------------
+
+-spec count_cells() -> {ok, integer()}.
+
+count_cells() -> gen_server:call(memtissue, count_cells).
 
 %%------------------------------------------------------------------------------
 %% @doc Memtissue keeps cached list of memcells pids in memory. Occasionally one
@@ -99,29 +122,29 @@ get(N) -> gen_event:call(memtissue, ?MODULE, {get, N}).
 
 -spec flush() -> ok.
 
-flush() -> gen_event:notify(memtissue, ?MODULE, flush).
+flush() -> gen_server:cast(memtissue, flush).
 
 %%%
 %%% Callback functions from gen_server
 %%%
 
-init(_Args) ->
-    Supervisor = memcell_sup:start_link(?MEMCELL_CAPACITY),
+init(Capacity) ->
+    {ok, Supervisor} = memcell_sup:start_link(Capacity),
     {ok, _} = supervisor:start_child(Supervisor, []),
     %% Supervisor starts with a single child.
     Pids = memcell_sup:which_children(Supervisor),
-    ?PRINT("Starting memtissue with"),
-    ?PRINT(Pids),
     State = #memtissue{
+        memcell_capacity=Capacity,
         memcells=array:from_list(Pids),
-        supervisor=Supervisor
+        supervisor=Supervisor,
+        until_next_cell=Capacity
     },
     {ok, State}.
 
 %% Scales the mempool.
-handle_call(
+handle_cast(
     Call = {insert, _},
-    State = #memtissue {until_next_cell=1, memcells=Cells}
+    State = #memtissue {until_next_cell=1, memcells=Cells, memcell_capacity=Cap}
 ) ->
     case array:size(Cells) =< ?MAX_MEMCELLS of
         true ->
@@ -129,37 +152,42 @@ handle_call(
             N = array:size(State#memtissue.memcells),
             supervisor:start_child(State#memtissue.supervisor, []),
             %% How many insert requests until a next new worker.
-            UntilNextCell = (N + 1) * ?MEMCELL_CAPACITY,
-            handle_call(Call, State#memtissue { until_next_cell=UntilNextCell });
+            UntilNextCell = (N + 1) * Cap,
+            ok = flush(),
+            handle_cast(Call, State#memtissue { until_next_cell=UntilNextCell });
         false ->
-            handle_call(Call, State#memtissue { until_next_cell=0 })
+            handle_cast(Call, State#memtissue { until_next_cell=0 })
     end;
 
 %% If the tissue reached maximum number of cells, we don't do anything special
 %% on inserts.
-handle_call({insert, Element}, State = #memtissue {until_next_cell=0}) ->
+handle_cast({insert, Element}, State = #memtissue {until_next_cell=0}) ->
     Pid = random_cell(State),
     ok = memcell:insert(Element, Pid),
-    {reply, ok, State};
+    {noreply, State};
 
 %% We decrement the state pointer for insert by 1.
-handle_call({insert, Element}, State = #memtissue {until_next_cell=N}) ->
+handle_cast({insert, Element}, State = #memtissue {until_next_cell=N}) ->
     Pid = random_cell(State),
     ok = memcell:insert(Element, Pid),
-    {reply, ok, State#memtissue {until_next_cell=N - 1}};
-
-%% Picks a cell on random and creates a callback which the consumer can use to
-%% get N random messages from.
-handle_call({get, N}, State) ->
-    Cell = random_cell(State),
-    Callback = fun() -> memcell:get(N, Cell) end,
-    {reply, {ok, Callback}, State}.
+    {noreply, State#memtissue {until_next_cell=N - 1}};
 
 %% Reloads memcells by reading supervisor's children and loadng the pids into
 %% an array.
-handle_event(flush, State) ->
+handle_cast(flush, State) ->
     Pids = memcell_sup:which_children(State#memtissue.supervisor),
-    {ok, State#memtissue { memcells=Pids }}.
+    {noreply, State#memtissue { memcells=array:from_list(Pids) }}.
+
+%% Picks a cell on random and creates a callback which the consumer can use to
+%% get N random messages from.
+handle_call({get, N}, _, State) ->
+    Cell = random_cell(State),
+    Callback = fun() -> memcell:get(N, Cell) end,
+    {reply, {ok, Callback}, State};
+
+%% Counts how many cells are there in the array at the moment.
+handle_call(count_cells, _, State = #memtissue {memcells=Cells}) ->
+    {reply, {ok, array:size(Cells)}, State}.
 
 %%%
 %%% Local functions
@@ -169,7 +197,7 @@ handle_event(flush, State) ->
 
 random_cell(State) ->
     Children = array:size(State#memtissue.memcells),
-    RandomCellIndex = erlang:system_time(milisecond) rem Children,
+    RandomCellIndex = erlang:system_time(millisecond) rem Children,
     % Checks that the cell is not in restarting state.
     case array:get(RandomCellIndex, State#memtissue.memcells) of
         restarting -> random_cell(State);

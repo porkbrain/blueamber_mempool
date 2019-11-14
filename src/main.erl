@@ -4,9 +4,10 @@
 %% @end
 %%%-----------------------------------------------------------------------------
 -module(main).
--export([start/0]).
 
 -include("prelude.hrl").
+
+-export([start/0]).
 
 %% This is where it all starts.
 start() -> ok.
