@@ -1,5 +1,7 @@
 # blueamber_mempool
 
+[![Build Status](https://travis-ci.com/mewant/blueamber_mempool.svg?branch=master)](https://travis-ci.com/mewant/blueamber_mempool)
+
 ## Background
 
 Distributed network Blue Amber (BA) is a network on which agents work together towards some goal. It consists of two types of agents: **mempools** and [client nodes][todo-client-repo]. BA was designed to give all agents a way to contribute to a common goal without having to trust other agents on the network. We refer to the goal as to **task**.
