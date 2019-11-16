@@ -1,0 +1,6 @@
+-sname blueamber_mempool
+
+-setcookie blueamber_mempool_cookie
+
++K true
++A30

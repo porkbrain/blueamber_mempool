@@ -36,9 +36,7 @@ start_link(Capacity) ->
 
 child_spec(Capacity) when Capacity > 0 -> #{
     id => cell,
-    start => {memcell, start_link, [Capacity]},
-    shutdown => brutal_kill,
-    type => worker
+    start => {memcell, start_link, [Capacity]}
 }.
 
 %%------------------------------------------------------------------------------

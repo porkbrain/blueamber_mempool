@@ -1,0 +1,15 @@
+{application, blueamber_mempool,
+ [{description, "Mempool is an agent whose purpose is to store messages from clients."},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {blueamber_mempool_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

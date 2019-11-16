@@ -11,7 +11,7 @@ start_with_no_children_test() ->
     Children = supervisor:which_children(Pid),
     ?assertEqual(0, length(Children)).
 
-has_four_children_test() ->
+has_one_child_test() ->
     {ok, Pid} = memtissue_sup:start_link(),
     {ok, MemtissuePid} = supervisor:start_child(Pid, [4]),
     Children = supervisor:which_children(Pid),
